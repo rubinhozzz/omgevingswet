@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setLoading(true);
     try {
-      let url = `http://localhost:8000/omgevingswet/get_activities/?q=${encodeURIComponent(address)}`;
+      let url = `https://eu-west-mog-api-test.mogee.nl/omgevingswet/get_activities/?q=${encodeURIComponent(address)}`;
       const ddType = document.getElementById('dd_type').value;
       const ddRule = document.getElementById('dd_rule').value;
       if (ddType) url += `&type=${encodeURIComponent(ddType)}`;
