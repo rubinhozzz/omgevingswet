@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Omgevingswet</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+<style>
+/* spinner */
+.spinner {
+  width: 24px; height: 24px;
+  border: 3px solid #e5e7eb;        /* light gray ring */
+  border-top-color: #9ca3af;         /* darker gray arc */
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  display: none;                     /* hidden by default */
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* soft row colors */
+.status-do    { background-color: #dcfce7; } /* light green */
+.status-dont  { background-color: #fee2e2; } /* light red */
+.status-other { background-color: #f3f4f6; } /* light gray */
+
+button[disabled] { opacity: .6; cursor: not-allowed; }
+
+/* optional: smooth hover/focus */
+tbody tr { transition: background-color .15s ease; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const btn      = document.getElementById('fetchBtn');     // use your button id
+  const loader   = document.getElementById('loader');
+  const results  = document.getElementById('results');
+  const input    = document.getElementById('address');
+
+  function setLoading(on) {
+    loader.style.display = on ? 'inline-block' : 'none';
+    btn.disabled = on;
+  }
+
+  function rowClassFromRule(rule) {
+    const t = (rule || '').toLowerCase().trim();
+    // DON'T must be checked before DO
+    if (t.startsWith("don't") || t.startsWith("dont")) return 'status-dont';
+    // 'DO', 'DO (permit required)', 'DO (notification)', etc.
+    if (t === 'do' || t.startsWith('do ' ) || t.startsWith('do(')) return 'status-do';
+    return 'status-other';
+  }
+
+  async function fetchData() {
+    const address = input.value.trim();
+    if (!address) return;
+
+    // clear previous
+    results.textContent = '';
+
+    setLoading(true);
+    try {
+      let url = `http://localhost:8000/omgevingswet/get_activities/?q=${encodeURIComponent(address)}`;
+      const ddType = document.getElementById('dd_type').value;
+      const ddRule = document.getElementById('dd_rule').value;
+      if (ddType) url += `&type=${encodeURIComponent(ddType)}`;
+      if (ddRule) url += `&rule=${encodeURIComponent(ddRule)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+
+      if (!Array.isArray(data) || data.length === 0) {
+        const tr = document.createElement('tr');
+        tr.className = 'status-other';
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.textContent = 'No results.';
+        tr.appendChild(td);
+        results.appendChild(tr);
+        return;
+      }
+
+      // build rows safely (no innerHTML for values)
+      const frag = document.createDocumentFragment();
+      for (const item of data) {
+        const tr = document.createElement('tr');
+        tr.className = rowClassFromRule(item.rule);
+        const td0 = document.createElement('td'); td0.textContent = item.type || '';
+        const td1 = document.createElement('td'); td1.textContent = item.activity_name || '';
+        const td2 = document.createElement('td'); td2.textContent = item.rule || '';
+        const td3 = document.createElement('td'); td3.textContent = item.issuer || '';
+        const td4 = document.createElement('td'); td4.textContent = item.paragraph || '';
+        const td5 = document.createElement('td'); td5.textContent = item.regeling || '';
+
+        tr.append(td0, td1, td2, td3, td4, td5);
+        frag.appendChild(tr);
+      }
+      results.appendChild(frag);
+    } catch (err) {
+      console.error(err);
+      const tr = document.createElement('tr');
+      tr.className = 'status-dont';
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.textContent = `Error: ${err.message}`;
+      tr.appendChild(td);
+      results.appendChild(tr);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+btn.addEventListener('click', fetchData);
+input.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchData(); });
+
+});
+</script>
+
+</head>
+<body>
+<span id="loader" class="spinner" aria-label="Loading" aria-live="polite"></span>
+<div class="container">
+
+<h1 class="title">Omgevingswet test</h1>
+
+<form class="box">
+    <div class="field">
+        <label class="label" for="fname">Address:</label>
+        <div class="control">
+            <input class="input" type="text" id="address" name="address" value="Koningslaan 60, Amsterdam">
+        </div>
+    </div>
+    <div class="field">
+        <label class="label" for="dd_type">Filter by type:</label>
+        <div class="control">
+            <div class="select">
+                <select id="dd_type" name="dd_type">
+                    <option value="">All</option>
+                    <option value="uitbouw">Uitbouw</option>
+                    <option value="milieu">Milieu</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="field">
+        <label class="label" for="dd_rule">Filter by rule:</label>
+        <div class="control">
+            <div class="select">
+                <select id="dd_rule" name="dd_rule">
+                    <option value="">All</option>
+                    <option value="do">DO</option>
+                    <option value="dont">DONT</option>
+                    <option value="anders_geduid">Anders geduid</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="field">
+        <button class="button is-primary" type="button" id="fetchBtn" name="fetchBtn" onclick="fetchData()">Fetch Data</button>
+    </div>
+    
+</form>
+
+<table class="table is-fullwidth">
+    <thead>
+        <tr>
+            <th>Type</th>
+            <th>Activity</th>
+            <th>DO / DON'T</th>
+            <th>Issuer</th>
+            <th>Paragraph</th>
+            <th>Regeling</th>
+        </tr>
+    </thead>
+    <tbody id="results">
+    </tbody>
+</table>
+
+</div>
+</body>
+</html>
