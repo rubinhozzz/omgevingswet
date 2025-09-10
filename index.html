@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
 <title>Omgevingswet</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
 <style>
@@ -28,27 +29,32 @@ tbody tr { transition: background-color .15s ease; }
 </style>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-  const btn      = document.getElementById('fetchBtn');     // use your button id
-  const loader   = document.getElementById('loader');
-  const results  = document.getElementById('results');
-  const input    = document.getElementById('address');
 
-  function setLoading(on) {
+document.addEventListener('DOMContentLoaded', () => {
+
+const btn      = document.getElementById('fetchBtn');     // use your button id
+const loader   = document.getElementById('loader');
+const results  = document.getElementById('results');
+const input    = document.getElementById('address');
+const base_url = 'https://eu-west-mog-api-test.mogee.nl/'; 
+const local_url = 'http://localhost:8000/';
+const env = 'prod'; // 'prod' or 'test'
+
+function setLoading(on) {
     loader.style.display = on ? 'inline-block' : 'none';
     btn.disabled = on;
-  }
+}
 
-  function rowClassFromRule(rule) {
+function rowClassFromRule(rule) {
     const t = (rule || '').toLowerCase().trim();
     // DON'T must be checked before DO
     if (t.startsWith("don't") || t.startsWith("dont")) return 'status-dont';
     // 'DO', 'DO (permit required)', 'DO (notification)', etc.
     if (t === 'do' || t.startsWith('do ' ) || t.startsWith('do(')) return 'status-do';
     return 'status-other';
-  }
+}
 
-  async function fetchData() {
+async function fetchData() {
     const address = input.value.trim();
     if (!address) return;
 
@@ -57,55 +63,159 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setLoading(true);
     try {
-      let url = `https://eu-west-mog-api-test.mogee.nl/omgevingswet/get_activities/?q=${encodeURIComponent(address)}`;
-      const ddType = document.getElementById('dd_type').value;
-      const ddRule = document.getElementById('dd_rule').value;
-      if (ddType) url += `&type=${encodeURIComponent(ddType)}`;
-      if (ddRule) url += `&rule=${encodeURIComponent(ddRule)}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
+        // fetch activities
+        let url = `${base_url}omgevingswet/get_activities/?q=${encodeURIComponent(address)}` ;
+        if (env === 'test') 
+            url = `${local_url}omgevingswet/get_activities/?q=${encodeURIComponent(address)}` ;
+        const ddType = document.getElementById('dd_type').value;
+        const ddRule = document.getElementById('dd_rule').value;
+        if (ddType) url += `&type=${encodeURIComponent(ddType)}`;
+        if (ddRule) url += `&rule=${encodeURIComponent(ddRule)}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-      if (!Array.isArray(data) || data.length === 0) {
+        if (!Array.isArray(data) || data.length === 0) {
+            const tr = document.createElement('tr');
+            tr.className = 'status-other';
+            const td = document.createElement('td');
+            td.colSpan = 5;
+            td.textContent = 'No results.';
+            tr.appendChild(td);
+            results.appendChild(tr);
+            return;
+        }
+
+        // build rows safely (no innerHTML for values)
+        const frag = document.createDocumentFragment();
+        for (const item of data) {
+            const tr = document.createElement('tr');
+            tr.className = rowClassFromRule(item.rule);
+            const td0 = document.createElement('td'); td0.textContent = item.type || '';
+            const td1 = document.createElement('td'); td1.textContent = item.activity_name || '';
+            const td2 = document.createElement('td'); td2.textContent = item.rule || '';
+            const td3 = document.createElement('td'); td3.textContent = item.issuer || '';
+            const td4 = document.createElement('td'); td4.textContent = item.paragraph || '';
+
+            tr.append(td0, td1, td2, td3, td4);
+            frag.appendChild(tr);
+        }
+        results.appendChild(frag);
+    } catch (err) {
+        console.error(err);
         const tr = document.createElement('tr');
-        tr.className = 'status-other';
+        tr.className = 'status-dont';
         const td = document.createElement('td');
         td.colSpan = 5;
-        td.textContent = 'No results.';
+        td.textContent = `Error: ${err.message}`;
         tr.appendChild(td);
         results.appendChild(tr);
-        return;
-      }
-
-      // build rows safely (no innerHTML for values)
-      const frag = document.createDocumentFragment();
-      for (const item of data) {
-        const tr = document.createElement('tr');
-        tr.className = rowClassFromRule(item.rule);
-        const td0 = document.createElement('td'); td0.textContent = item.type || '';
-        const td1 = document.createElement('td'); td1.textContent = item.activity_name || '';
-        const td2 = document.createElement('td'); td2.textContent = item.rule || '';
-        const td3 = document.createElement('td'); td3.textContent = item.issuer || '';
-        const td4 = document.createElement('td'); td4.textContent = item.paragraph || '';
-        const td5 = document.createElement('td'); td5.textContent = item.regeling || '';
-
-        tr.append(td0, td1, td2, td3, td4, td5);
-        frag.appendChild(tr);
-      }
-      results.appendChild(frag);
-    } catch (err) {
-      console.error(err);
-      const tr = document.createElement('tr');
-      tr.className = 'status-dont';
-      const td = document.createElement('td');
-      td.colSpan = 5;
-      td.textContent = `Error: ${err.message}`;
-      tr.appendChild(td);
-      results.appendChild(tr);
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
+    
+    // fetch maatvoeringen
+    let url = `${base_url}omgevingswet/get_maatvoeringen/?q=${encodeURIComponent(address)}` ;
+    if (env === 'test')
+        url = `${local_url}omgevingswet/get_maatvoeringen/?q=${encodeURIComponent(address)}` ;
+    const responseMaat = await fetch(url);
+    if (!responseMaat.ok) throw new Error(`HTTP ${responseMaat.status}`);
+    const dataMaat = await responseMaat.json();
+    // <tbody id="results_maat"></tbody>
+    const tbodyMaat = document.getElementById('results_maat');
+    tbodyMaat.textContent = ''; // clear previous
+
+    // helper: read value from Map or plain object
+    const fromTypes = (types, key) =>
+    types && typeof types.get === 'function' ? types.get(key) ?? null : (types?.[key] ?? null);
+
+    const frag = document.createDocumentFragment();
+
+    for (const item of dataMaat) {
+        const count = item?.height_records_count ?? 0;
+        if (!count) continue;
+
+        const planNaam = item?.plan?.naam ?? '';
+        const planId   = item?.plan?.id ?? '';
+
+        const rows = summarizeHeights(item); // [{ id, types, geom_type }, ...]
+        for (const r of rows) {
+            const bh = fromTypes(r.types, 'maximum bouwhoogte (m)');
+            const gh = fromTypes(r.types, 'maximum goothoogte (m)');
+
+            // build one table row
+            const tr = document.createElement('tr');
+
+            const tdPlan   = document.createElement('td'); tdPlan.textContent   = planNaam;
+            const tdPlanId = document.createElement('td'); tdPlanId.textContent = planId;
+            //const tdId     = document.createElement('td'); tdId.textContent     = r.id ?? '';
+            const tdBH     = document.createElement('td'); tdBH.textContent     = bh != null ? `≤ ${bh} m` : '';
+            const tdGH     = document.createElement('td'); tdGH.textContent     = gh != null ? `≤ ${gh} m` : '';
+            const tdGeom   = document.createElement('td'); tdGeom.textContent   = r.geom_type ?? '';
+
+            tr.append(tdPlan, tdPlanId, tdBH, tdGH, tdGeom);
+            frag.appendChild(tr);
+        }
+    }
+
+    // show “No results” if nothing was added
+    if (!frag.childNodes.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6; // <-- match your number of columns
+        td.textContent = 'No maatvoeringen found.';
+        tr.appendChild(td);
+        frag.appendChild(tr);
+    }
+
+    tbodyMaat.appendChild(frag);
+
+}
+
+function summarizeHeights(result) {
+  const rows = [];
+  const records = result?.height_records ?? [];
+
+  const parseNL = v => {
+    if (typeof v === 'string') {
+      const n = parseFloat(v.replace(',', '.'));
+      return Number.isNaN(n) ? v : n;
+    }
+    return v;
+  };
+
+  for (const rec of records) {
+    const raw = rec?.height?.raw ?? {};
+    const types = new Map();
+    const omvang = Array.isArray(raw?.omvang) ? raw.omvang : [];
+
+    for (const o of omvang) {
+      const naam = (o?.naam ?? '').trim();
+      types.set(naam, parseNL(o?.waarde));
+    }
+
+    rows.push({
+      id: raw?.id ?? null,
+      types, // Map
+      geom_type: raw?.geometrie?.type ?? null,
+    });
   }
+  return rows;
+}
+
+const tabs = document.querySelectorAll('.tabs li');
+const panels = document.querySelectorAll('.tab-content');
+
+tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        // activate tab
+        tabs.forEach(t => t.classList.remove('is-active'));
+        tab.classList.add('is-active');
+        // show matching panel
+        const target = tab.dataset.target;
+        panels.forEach(p => p.classList.toggle('is-hidden', p.id !== target));
+    });
+});
 
 btn.addEventListener('click', fetchData);
 input.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchData(); });
@@ -155,23 +265,47 @@ input.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchData(); }
     <div class="field">
         <button class="button is-primary" type="button" id="fetchBtn" name="fetchBtn" onclick="fetchData()">Fetch Data</button>
     </div>
-    
 </form>
 
-<table class="table is-fullwidth">
-    <thead>
-        <tr>
-            <th>Type</th>
-            <th>Activity</th>
-            <th>DO / DON'T</th>
-            <th>Issuer</th>
-            <th>Paragraph</th>
-            <th>Regeling</th>
-        </tr>
-    </thead>
-    <tbody id="results">
-    </tbody>
-</table>
+<div class="tabs is-boxed">
+    <ul id="main-tabs">
+        <li class="is-active" data-target="tab-activities"><a>Activities</a></li>
+        <li data-target="tab-maat"><a>Maatvoeringen</a></li>
+    </ul>
+</div>
+
+<!-- Panels -->
+<div id="tab-activities" class="tab-content">
+    <table class="table is-fullwidth">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Activity</th>
+                <th>DO / DON'T</th>
+                <th>Issuer</th>
+                <th>Paragraph</th>
+            </tr>
+        </thead>
+        <tbody id="results">
+        </tbody>
+    </table>
+</div>
+
+<div id="tab-maat" class="tab-content is-hidden">
+    <table class="table is-fullwidth">
+        <thead>
+            <tr>
+                <th>Bestemmingsplan</th>
+                <th>plan id</th>
+                <th>max bouwhoogte</th>
+                <th>max goothoogte</th>
+                <th>geometrie</th>
+            </tr>
+        </thead>
+        <tbody id="results_maat">
+        </tbody>
+    </table>
+</div>
 
 </div>
 </body>
